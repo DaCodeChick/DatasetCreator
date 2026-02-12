@@ -227,6 +227,7 @@ void DatasetView::onItemClicked(const QModelIndex& index) {
     int sampleIndex = item->data(Qt::UserRole).toInt();
     if (sampleIndex >= 0 && sampleIndex < dataset_->samples().size()) {
         emit sampleSelected(dataset_->samples()[sampleIndex]);
+        emit sampleSelectedWithIndex(dataset_->samples()[sampleIndex], sampleIndex);
     }
 }
 

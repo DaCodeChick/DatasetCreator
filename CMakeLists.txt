@@ -150,6 +150,34 @@ if(HighFive_FOUND)
     target_link_libraries(test_cli PRIVATE HighFive)
 endif()
 
+# Test metadata executable (for testing metadata editing)
+qt_add_executable(test_metadata
+    test_metadata.cpp
+    ${CORE_SOURCES}
+    ${PLUGIN_SOURCES}
+    ${MANAGER_SOURCES}
+    ${UTIL_SOURCES}
+)
+
+target_include_directories(test_metadata PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_metadata PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Multimedia
+    Qt6::Svg
+)
+
+if(Arrow_FOUND)
+    target_link_libraries(test_metadata PRIVATE arrow_shared parquet_shared)
+endif()
+
+if(HighFive_FOUND)
+    target_link_libraries(test_metadata PRIVATE HighFive)
+endif()
+
 # Enable testing
 enable_testing()
 add_subdirectory(tests)

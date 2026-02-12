@@ -225,6 +225,50 @@ bool Dataset::isEmpty() const {
     return samples_.isEmpty() && subsets_.isEmpty();
 }
 
+DatasetSample* Dataset::getSample(int index) {
+    if (index < 0 || index >= samples_.size()) return nullptr;
+    return &samples_[index];
+}
+
+const DatasetSample* Dataset::getSample(int index) const {
+    if (index < 0 || index >= samples_.size()) return nullptr;
+    return &samples_[index];
+}
+
+bool Dataset::updateSampleTags(int index, const QStringList& tags) {
+    DatasetSample* sample = getSample(index);
+    if (!sample) return false;
+    sample->metadata().tags = tags;
+    metadata_.modified = QDateTime::currentDateTime();
+    return true;
+}
+
+bool Dataset::updateSampleLabels(int index, const QVariantMap& labels) {
+    DatasetSample* sample = getSample(index);
+    if (!sample) return false;
+    sample->metadata().labels = labels;
+    metadata_.modified = QDateTime::currentDateTime();
+    return true;
+}
+
+bool Dataset::addSampleTag(int index, const QString& tag) {
+    DatasetSample* sample = getSample(index);
+    if (!sample) return false;
+    if (!sample->metadata().tags.contains(tag)) {
+        sample->metadata().tags.append(tag);
+        metadata_.modified = QDateTime::currentDateTime();
+    }
+    return true;
+}
+
+bool Dataset::addSampleLabel(int index, const QString& key, const QVariant& value) {
+    DatasetSample* sample = getSample(index);
+    if (!sample) return false;
+    sample->metadata().labels[key] = value;
+    metadata_.modified = QDateTime::currentDateTime();
+    return true;
+}
+
 QVariantMap Dataset::toVariantMap() const {
     QVariantMap map;
     map["metadata"] = metadata_.toVariantMap();

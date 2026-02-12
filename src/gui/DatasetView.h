@@ -19,6 +19,7 @@ public:
     
 signals:
     void sampleSelected(const DatasetSample& sample);
+    void sampleSelectedWithIndex(const DatasetSample& sample, int index);
     
 private slots:
     void onItemClicked(const QModelIndex& index);

@@ -22,6 +22,9 @@ private slots:
     void onImportFiles();
     void onExportDataset();
     void onSampleImported(const DatasetSample& sample);
+    void onSampleSelectedWithIndex(const DatasetSample& sample, int index);
+    void onTagsChanged(const QStringList& tags);
+    void onLabelsChanged(const QStringList& labels);
     
 private:
     void setupUI();
@@ -36,6 +39,8 @@ private:
     DatasetView* datasetView_;
     SamplePreview* samplePreview_;
     MetadataEditor* metadataEditor_;
+    
+    int currentSampleIndex_ = -1;
 };
 
 }

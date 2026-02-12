@@ -82,6 +82,13 @@ void MainWindow::setupUI() {
             samplePreview_, &SamplePreview::showSample);
     connect(datasetView_, &DatasetView::sampleSelected,
             metadataEditor_, &MetadataEditor::editSample);
+    connect(datasetView_, &DatasetView::sampleSelectedWithIndex,
+            this, &MainWindow::onSampleSelectedWithIndex);
+    
+    connect(metadataEditor_, &MetadataEditor::tagsChanged,
+            this, &MainWindow::onTagsChanged);
+    connect(metadataEditor_, &MetadataEditor::labelsChanged,
+            this, &MainWindow::onLabelsChanged);
     
     setCentralWidget(central);
     
@@ -137,6 +144,39 @@ void MainWindow::onSampleImported(const DatasetSample& sample) {
             .arg(sample.metadata().sourceFile)
             .arg(currentDataset_.totalSampleCount())
     );
+}
+
+void MainWindow::onSampleSelectedWithIndex(const DatasetSample& sample, int index) {
+    currentSampleIndex_ = index;
+}
+
+void MainWindow::onTagsChanged(const QStringList& tags) {
+    if (currentSampleIndex_ < 0) return;
+    
+    if (currentDataset_.updateSampleTags(currentSampleIndex_, tags)) {
+        datasetView_->refresh();
+        statusBar()->showMessage(tr("Tags updated for sample %1").arg(currentSampleIndex_));
+    }
+}
+
+void MainWindow::onLabelsChanged(const QStringList& labels) {
+    if (currentSampleIndex_ < 0) return;
+    
+    // Parse labels from string format "key:value" to QVariantMap
+    QVariantMap labelsMap;
+    for (const QString& label : labels) {
+        QStringList parts = label.split(":", Qt::SkipEmptyParts);
+        if (parts.size() >= 2) {
+            QString key = parts[0].trimmed();
+            QString value = parts.mid(1).join(":").trimmed(); // Handle colons in values
+            labelsMap[key] = value;
+        }
+    }
+    
+    if (currentDataset_.updateSampleLabels(currentSampleIndex_, labelsMap)) {
+        datasetView_->refresh();
+        statusBar()->showMessage(tr("Labels updated for sample %1").arg(currentSampleIndex_));
+    }
 }
 
 }

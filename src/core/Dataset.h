@@ -93,6 +93,14 @@ public:
     QMap<SampleType, int> typeDistribution() const;
     int totalSampleCount() const;  // Includes all samples in subsets
     
+    // Sample metadata updates
+    DatasetSample* getSample(int index);
+    const DatasetSample* getSample(int index) const;
+    bool updateSampleTags(int index, const QStringList& tags);
+    bool updateSampleLabels(int index, const QVariantMap& labels);
+    bool addSampleTag(int index, const QString& tag);
+    bool addSampleLabel(int index, const QString& key, const QVariant& value);
+    
     // Utility
     void clear();
     bool isEmpty() const;
