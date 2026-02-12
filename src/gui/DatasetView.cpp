@@ -1,4 +1,5 @@
 #include "DatasetView.h"
+#include "DatasetTreeModel.h"
 #include <QVBoxLayout>
 #include <QHeaderView>
 #include <QStandardItem>
@@ -18,16 +19,28 @@ void DatasetView::setupUI() {
     layout->setContentsMargins(0, 0, 0, 0);
     
     treeView_ = new QTreeView(this);
-    model_ = new QStandardItemModel(this);
+    model_ = new DatasetTreeModel(this);
     
     // Set column headers
     model_->setHorizontalHeaderLabels({"Name", "Type", "Size", "Tags", "Labels"});
     
     treeView_->setModel(model_);
     treeView_->setAlternatingRowColors(true);
-    treeView_->setSelectionMode(QAbstractItemView::SingleSelection);
+    treeView_->setSelectionMode(QAbstractItemView::ExtendedSelection);  // Allow multi-select
     treeView_->header()->setStretchLastSection(false);
     treeView_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    
+    // Enable drag and drop
+    treeView_->setDragEnabled(true);
+    treeView_->setAcceptDrops(true);
+    treeView_->setDropIndicatorShown(true);
+    treeView_->setDragDropMode(QAbstractItemView::InternalMove);
+    
+    // Connect drag-drop signals from custom model
+    connect(model_, &DatasetTreeModel::sampleDropped,
+            this, &DatasetView::sampleDraggedToSubset);
+    connect(model_, &DatasetTreeModel::sampleDroppedToRoot,
+            this, &DatasetView::sampleDraggedToRoot);
     
     // Enable context menu
     treeView_->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -65,9 +78,10 @@ void DatasetView::populateTree() {
             
             QList<QStandardItem*> row;
             
-            // Name column
+            // Name column - store sample ID and index
             QStandardItem* nameItem = new QStandardItem(sample.metadata().id);
             nameItem->setData(i, Qt::UserRole); // Store sample index
+            nameItem->setData(sample.metadata().id, Qt::UserRole + 2); // Store sample ID
             nameItem->setData(false, Qt::UserRole + 1); // Not a subset
             row.append(nameItem);
             
@@ -108,6 +122,7 @@ void DatasetView::populateTree() {
             
             QStandardItem* subsetItem = new QStandardItem(subset.name());
             subsetItem->setData(-1, Qt::UserRole); // Not a sample
+            subsetItem->setData(subset.name(), Qt::UserRole + 2); // Store subset name
             subsetItem->setData(true, Qt::UserRole + 1); // Is a subset
             subsetRow.append(subsetItem);
             
@@ -125,6 +140,7 @@ void DatasetView::populateTree() {
                 
                 QStandardItem* nameItem = new QStandardItem(sample.metadata().id);
                 nameItem->setData(i, Qt::UserRole);
+                nameItem->setData(sample.metadata().id, Qt::UserRole + 2); // Store sample ID
                 nameItem->setData(false, Qt::UserRole + 1);
                 row.append(nameItem);
                 
@@ -269,24 +285,82 @@ void DatasetView::showContextMenu(const QPoint& pos) {
     if (!item) return;
     
     bool isSubset = item->data(Qt::UserRole + 1).toBool();
-    if (isSubset) return;  // No context menu for subsets yet
-    
-    int sampleIndex = item->data(Qt::UserRole).toInt();
-    if (sampleIndex < 0) return;
     
     QMenu contextMenu(this);
     
-    QAction* moveToSubsetAction = contextMenu.addAction("Move to Subset...");
-    contextMenu.addSeparator();
-    QAction* deleteAction = contextMenu.addAction("Delete Sample");
-    
-    QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
-    
-    if (selectedAction == moveToSubsetAction) {
-        emit moveToSubsetRequested(sampleIndex);
-    } else if (selectedAction == deleteAction) {
-        emit deleteSampleRequested(sampleIndex);
+    if (isSubset) {
+        // Context menu for subsets - coming in future phase
+        return;
     }
+    
+    // Context menu for samples
+    int sampleIndex = item->data(Qt::UserRole).toInt();
+    if (sampleIndex < 0) return;
+    
+    // Check if multiple samples are selected
+    QModelIndexList selectedIndexes = treeView_->selectionModel()->selectedRows();
+    bool multipleSelected = selectedIndexes.size() > 1;
+    
+    if (multipleSelected) {
+        QAction* batchMoveAction = contextMenu.addAction("Move Selected to Subset...");
+        contextMenu.addSeparator();
+        QAction* batchDeleteAction = contextMenu.addAction("Delete Selected Samples");
+        
+        QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
+        
+        if (selectedAction == batchMoveAction) {
+            emit batchMoveToSubsetRequested(getSelectedSampleIndices());
+        } else if (selectedAction == batchDeleteAction) {
+            // Will implement batch delete in next iteration
+        }
+    } else {
+        QAction* moveToSubsetAction = contextMenu.addAction("Move to Subset...");
+        contextMenu.addSeparator();
+        QAction* deleteAction = contextMenu.addAction("Delete Sample");
+        
+        QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
+        
+        if (selectedAction == moveToSubsetAction) {
+            emit moveToSubsetRequested(sampleIndex);
+        } else if (selectedAction == deleteAction) {
+            emit deleteSampleRequested(sampleIndex);
+        }
+    }
+}
+
+QString DatasetView::getSelectedSubsetName() const {
+    QModelIndex index = treeView_->currentIndex();
+    if (!index.isValid()) return QString();
+    
+    QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
+    if (!item) return QString();
+    
+    bool isSubset = item->data(Qt::UserRole + 1).toBool();
+    if (!isSubset) return QString();
+    
+    return item->text();
+}
+
+QList<int> DatasetView::getSelectedSampleIndices() const {
+    QList<int> indices;
+    QModelIndexList selectedIndexes = treeView_->selectionModel()->selectedRows();
+    
+    for (const QModelIndex& index : selectedIndexes) {
+        if (!index.isValid()) continue;
+        
+        QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
+        if (!item) continue;
+        
+        bool isSubset = item->data(Qt::UserRole + 1).toBool();
+        if (isSubset) continue;
+        
+        int sampleIndex = item->data(Qt::UserRole).toInt();
+        if (sampleIndex >= 0) {
+            indices.append(sampleIndex);
+        }
+    }
+    
+    return indices;
 }
 
 }

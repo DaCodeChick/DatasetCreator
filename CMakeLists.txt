@@ -62,6 +62,7 @@ set(GUI_SOURCES
     src/gui/MainWindow.cpp
     src/gui/FileImportDialog.cpp
     src/gui/DatasetView.cpp
+    src/gui/DatasetTreeModel.cpp
     src/gui/SamplePreview.cpp
     src/gui/MetadataEditor.cpp
     src/gui/ExportDialog.cpp

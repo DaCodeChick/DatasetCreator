@@ -96,6 +96,14 @@ void MainWindow::setupUI() {
             this, &MainWindow::onMoveToSubsetRequested);
     connect(datasetView_, &DatasetView::deleteSampleRequested,
             this, &MainWindow::onDeleteSampleRequested);
+    connect(datasetView_, &DatasetView::batchMoveToSubsetRequested,
+            this, &MainWindow::onBatchMoveToSubsetRequested);
+    
+    // Drag-drop actions
+    connect(datasetView_, &DatasetView::sampleDraggedToSubset,
+            this, &MainWindow::onSampleDraggedToSubset);
+    connect(datasetView_, &DatasetView::sampleDraggedToRoot,
+            this, &MainWindow::onSampleDraggedToRoot);
     
     setCentralWidget(central);
     
@@ -106,8 +114,13 @@ void MainWindow::setupUI() {
 
 void MainWindow::createMenuBar() {
     QMenu* fileMenu = menuBar()->addMenu(tr("&File"));
-    fileMenu->addAction(tr("&Import Files..."), this, &MainWindow::onImportFiles);
-    fileMenu->addAction(tr("&Export Dataset..."), this, &MainWindow::onExportDataset);
+    
+    QAction* importAction = fileMenu->addAction(tr("&Import Files..."), this, &MainWindow::onImportFiles);
+    importAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    
+    QAction* exportAction = fileMenu->addAction(tr("&Export Dataset..."), this, &MainWindow::onExportDataset);
+    exportAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
+    
     fileMenu->addSeparator();
     fileMenu->addAction(tr("E&xit"), this, &QWidget::close);
 }
@@ -234,6 +247,106 @@ void MainWindow::onDeleteSampleRequested(int sampleIndex) {
         
         statusBar()->showMessage(tr("Sample deleted. Total: %1 samples")
             .arg(currentDataset_.totalSampleCount()));
+    }
+}
+
+void MainWindow::onBatchMoveToSubsetRequested(const QList<int>& sampleIndices) {
+    if (sampleIndices.isEmpty()) {
+        return;
+    }
+    
+    // Show subset selection dialog
+    SubsetDialog dialog(currentDataset_.subsetNames(), this);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString subsetName = dialog.getSubsetName();
+        
+        if (subsetName.isEmpty()) {
+            QMessageBox::warning(this, tr("Error"), tr("Subset name cannot be empty"));
+            return;
+        }
+        
+        // Move samples to subset (in reverse order to preserve indices)
+        QList<int> sortedIndices = sampleIndices;
+        std::sort(sortedIndices.begin(), sortedIndices.end(), std::greater<int>());
+        
+        for (int sampleIndex : sortedIndices) {
+            if (sampleIndex >= 0 && sampleIndex < currentDataset_.sampleCount()) {
+                currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
+            }
+        }
+        
+        // Refresh view
+        datasetView_->refresh();
+        
+        statusBar()->showMessage(tr("Moved %1 samples to subset '%2'")
+            .arg(sampleIndices.size()).arg(subsetName));
+    }
+}
+
+void MainWindow::onSampleDraggedToSubset(const QString& sampleId, const QString& subsetName) {
+    if (sampleId.isEmpty() || subsetName.isEmpty()) {
+        return;
+    }
+    
+    // Find the sample by ID in the flat samples list
+    int sampleIndex = -1;
+    for (int i = 0; i < currentDataset_.samples().size(); ++i) {
+        if (currentDataset_.samples()[i].metadata().id == sampleId) {
+            sampleIndex = i;
+            break;
+        }
+    }
+    
+    if (sampleIndex >= 0) {
+        // Move sample from root to subset
+        currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
+        datasetView_->refresh();
+        statusBar()->showMessage(tr("Moved sample to subset '%1'").arg(subsetName));
+        return;
+    }
+    
+    // If not found in root, check if it's in a subset and needs to be moved
+    for (const auto& subset : currentDataset_.subsets()) {
+        for (int i = 0; i < subset.samples().size(); ++i) {
+            if (subset.samples()[i].metadata().id == sampleId) {
+                // Sample found in subset, move it to different subset
+                // First move to root, then to target subset
+                currentDataset_.moveSampleFromSubset(subset.name(), i);
+                
+                // Now find it in root and move to target
+                for (int j = 0; j < currentDataset_.samples().size(); ++j) {
+                    if (currentDataset_.samples()[j].metadata().id == sampleId) {
+                        currentDataset_.moveSampleToSubset(j, subsetName);
+                        break;
+                    }
+                }
+                
+                datasetView_->refresh();
+                statusBar()->showMessage(tr("Moved sample from '%1' to '%2'")
+                    .arg(subset.name()).arg(subsetName));
+                return;
+            }
+        }
+    }
+}
+
+void MainWindow::onSampleDraggedToRoot(const QString& sampleId) {
+    if (sampleId.isEmpty()) {
+        return;
+    }
+    
+    // Find which subset contains this sample
+    for (const auto& subset : currentDataset_.subsets()) {
+        for (int i = 0; i < subset.samples().size(); ++i) {
+            if (subset.samples()[i].metadata().id == sampleId) {
+                // Move sample from subset back to root
+                currentDataset_.moveSampleFromSubset(subset.name(), i);
+                datasetView_->refresh();
+                statusBar()->showMessage(tr("Moved sample from '%1' back to root")
+                    .arg(subset.name()));
+                return;
+            }
+        }
     }
 }
 

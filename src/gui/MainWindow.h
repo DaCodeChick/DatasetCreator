@@ -27,6 +27,9 @@ private slots:
     void onLabelsChanged(const QStringList& labels);
     void onMoveToSubsetRequested(int sampleIndex);
     void onDeleteSampleRequested(int sampleIndex);
+    void onBatchMoveToSubsetRequested(const QList<int>& sampleIndices);
+    void onSampleDraggedToSubset(const QString& sampleId, const QString& subsetName);
+    void onSampleDraggedToRoot(const QString& sampleId);
     
 private:
     void setupUI();

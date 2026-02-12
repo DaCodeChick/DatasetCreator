@@ -1,8 +1,8 @@
 #pragma once
 #include <QWidget>
 #include <QTreeView>
-#include <QStandardItemModel>
 #include "core/Dataset.h"
+#include "DatasetTreeModel.h"
 
 namespace DatasetCreator {
 
@@ -18,12 +18,17 @@ public:
     DatasetSample* getSelectedSample();
     int getSelectedSampleIndex() const;
     bool isSubsetSelected() const;
+    QString getSelectedSubsetName() const;
+    QList<int> getSelectedSampleIndices() const;
     
 signals:
     void sampleSelected(const DatasetSample& sample);
     void sampleSelectedWithIndex(const DatasetSample& sample, int index);
     void moveToSubsetRequested(int sampleIndex);
     void deleteSampleRequested(int sampleIndex);
+    void batchMoveToSubsetRequested(const QList<int>& sampleIndices);
+    void sampleDraggedToSubset(const QString& sampleId, const QString& subsetName);
+    void sampleDraggedToRoot(const QString& sampleId);
     
 private slots:
     void onItemClicked(const QModelIndex& index);
@@ -34,7 +39,7 @@ private:
     void populateTree();
     
     QTreeView* treeView_;
-    QStandardItemModel* model_;
+    DatasetTreeModel* model_;
     Dataset* dataset_;
 };
 
