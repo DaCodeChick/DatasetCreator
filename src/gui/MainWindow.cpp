@@ -2,6 +2,7 @@
 #include "DatasetView.h"
 #include "SamplePreview.h"
 #include "MetadataEditor.h"
+#include "SubsetDialog.h"
 #include "plugins/PluginManager.h"
 #include "managers/ImportManager.h"
 #include "managers/ExportManager.h"
@@ -89,6 +90,12 @@ void MainWindow::setupUI() {
             this, &MainWindow::onTagsChanged);
     connect(metadataEditor_, &MetadataEditor::labelsChanged,
             this, &MainWindow::onLabelsChanged);
+    
+    // Context menu actions
+    connect(datasetView_, &DatasetView::moveToSubsetRequested,
+            this, &MainWindow::onMoveToSubsetRequested);
+    connect(datasetView_, &DatasetView::deleteSampleRequested,
+            this, &MainWindow::onDeleteSampleRequested);
     
     setCentralWidget(central);
     
@@ -179,4 +186,56 @@ void MainWindow::onLabelsChanged(const QStringList& labels) {
     }
 }
 
+void MainWindow::onMoveToSubsetRequested(int sampleIndex) {
+    if (sampleIndex < 0 || sampleIndex >= currentDataset_.sampleCount()) {
+        QMessageBox::warning(this, tr("Error"), tr("Invalid sample index"));
+        return;
+    }
+    
+    // Show subset selection dialog
+    SubsetDialog dialog(currentDataset_.subsetNames(), this);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString subsetName = dialog.getSubsetName();
+        
+        if (subsetName.isEmpty()) {
+            QMessageBox::warning(this, tr("Error"), tr("Subset name cannot be empty"));
+            return;
+        }
+        
+        // Move sample to subset
+        currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
+        
+        // Refresh view
+        datasetView_->refresh();
+        
+        statusBar()->showMessage(tr("Moved sample to subset '%1'").arg(subsetName));
+    }
 }
+
+void MainWindow::onDeleteSampleRequested(int sampleIndex) {
+    if (sampleIndex < 0 || sampleIndex >= currentDataset_.sampleCount()) {
+        QMessageBox::warning(this, tr("Error"), tr("Invalid sample index"));
+        return;
+    }
+    
+    // Confirm deletion
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this, tr("Delete Sample"),
+        tr("Are you sure you want to delete this sample?"),
+        QMessageBox::Yes | QMessageBox::No
+    );
+    
+    if (reply == QMessageBox::Yes) {
+        currentDataset_.removeSample(sampleIndex);
+        datasetView_->refresh();
+        
+        // Clear selection
+        currentSampleIndex_ = -1;
+        
+        statusBar()->showMessage(tr("Sample deleted. Total: %1 samples")
+            .arg(currentDataset_.totalSampleCount()));
+    }
+}
+
+}
+

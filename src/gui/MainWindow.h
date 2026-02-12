@@ -25,6 +25,8 @@ private slots:
     void onSampleSelectedWithIndex(const DatasetSample& sample, int index);
     void onTagsChanged(const QStringList& tags);
     void onLabelsChanged(const QStringList& labels);
+    void onMoveToSubsetRequested(int sampleIndex);
+    void onDeleteSampleRequested(int sampleIndex);
     
 private:
     void setupUI();

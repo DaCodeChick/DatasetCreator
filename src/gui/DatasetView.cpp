@@ -2,6 +2,8 @@
 #include <QVBoxLayout>
 #include <QHeaderView>
 #include <QStandardItem>
+#include <QMenu>
+#include <QAction>
 
 namespace DatasetCreator {
 
@@ -26,6 +28,11 @@ void DatasetView::setupUI() {
     treeView_->setSelectionMode(QAbstractItemView::SingleSelection);
     treeView_->header()->setStretchLastSection(false);
     treeView_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    
+    // Enable context menu
+    treeView_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(treeView_, &QTreeView::customContextMenuRequested,
+            this, &DatasetView::showContextMenu);
     
     connect(treeView_, &QTreeView::clicked, this, &DatasetView::onItemClicked);
     
@@ -231,4 +238,56 @@ void DatasetView::onItemClicked(const QModelIndex& index) {
     }
 }
 
+int DatasetView::getSelectedSampleIndex() const {
+    QModelIndex index = treeView_->currentIndex();
+    if (!index.isValid()) return -1;
+    
+    QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
+    if (!item) return -1;
+    
+    bool isSubset = item->data(Qt::UserRole + 1).toBool();
+    if (isSubset) return -1;
+    
+    return item->data(Qt::UserRole).toInt();
 }
+
+bool DatasetView::isSubsetSelected() const {
+    QModelIndex index = treeView_->currentIndex();
+    if (!index.isValid()) return false;
+    
+    QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
+    if (!item) return false;
+    
+    return item->data(Qt::UserRole + 1).toBool();
+}
+
+void DatasetView::showContextMenu(const QPoint& pos) {
+    QModelIndex index = treeView_->indexAt(pos);
+    if (!index.isValid()) return;
+    
+    QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
+    if (!item) return;
+    
+    bool isSubset = item->data(Qt::UserRole + 1).toBool();
+    if (isSubset) return;  // No context menu for subsets yet
+    
+    int sampleIndex = item->data(Qt::UserRole).toInt();
+    if (sampleIndex < 0) return;
+    
+    QMenu contextMenu(this);
+    
+    QAction* moveToSubsetAction = contextMenu.addAction("Move to Subset...");
+    contextMenu.addSeparator();
+    QAction* deleteAction = contextMenu.addAction("Delete Sample");
+    
+    QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
+    
+    if (selectedAction == moveToSubsetAction) {
+        emit moveToSubsetRequested(sampleIndex);
+    } else if (selectedAction == deleteAction) {
+        emit deleteSampleRequested(sampleIndex);
+    }
+}
+
+}
+

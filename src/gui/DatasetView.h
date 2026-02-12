@@ -16,13 +16,18 @@ public:
     void addSample(const DatasetSample& sample);
     
     DatasetSample* getSelectedSample();
+    int getSelectedSampleIndex() const;
+    bool isSubsetSelected() const;
     
 signals:
     void sampleSelected(const DatasetSample& sample);
     void sampleSelectedWithIndex(const DatasetSample& sample, int index);
+    void moveToSubsetRequested(int sampleIndex);
+    void deleteSampleRequested(int sampleIndex);
     
 private slots:
     void onItemClicked(const QModelIndex& index);
+    void showContextMenu(const QPoint& pos);
     
 private:
     void setupUI();

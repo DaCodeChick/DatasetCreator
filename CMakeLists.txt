@@ -65,6 +65,7 @@ set(GUI_SOURCES
     src/gui/SamplePreview.cpp
     src/gui/MetadataEditor.cpp
     src/gui/ExportDialog.cpp
+    src/gui/SubsetDialog.cpp
 )
 
 set(UTIL_SOURCES
@@ -178,6 +179,35 @@ if(HighFive_FOUND)
     target_link_libraries(test_metadata PRIVATE HighFive)
 endif()
 
+# Test subsets executable (for testing subset management)
+qt_add_executable(test_subsets
+    test_subsets.cpp
+    ${CORE_SOURCES}
+    ${PLUGIN_SOURCES}
+    ${MANAGER_SOURCES}
+    ${UTIL_SOURCES}
+)
+
+target_include_directories(test_subsets PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_subsets PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Multimedia
+    Qt6::Svg
+)
+
+if(Arrow_FOUND)
+    target_link_libraries(test_subsets PRIVATE arrow_shared parquet_shared)
+endif()
+
+if(HighFive_FOUND)
+    target_link_libraries(test_subsets PRIVATE HighFive)
+endif()
+
 # Enable testing
 enable_testing()
 add_subdirectory(tests)
+
