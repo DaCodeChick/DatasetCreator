@@ -67,6 +67,8 @@ set(GUI_SOURCES
     src/gui/MetadataEditor.cpp
     src/gui/ExportDialog.cpp
     src/gui/SubsetDialog.cpp
+    src/gui/SubsetStatsWidget.cpp
+    src/gui/AutoSplitDialog.cpp
 )
 
 set(UTIL_SOURCES

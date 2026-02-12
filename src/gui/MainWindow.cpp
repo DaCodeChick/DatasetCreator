@@ -3,6 +3,8 @@
 #include "SamplePreview.h"
 #include "MetadataEditor.h"
 #include "SubsetDialog.h"
+#include "SubsetStatsWidget.h"
+#include "AutoSplitDialog.h"
 #include "plugins/PluginManager.h"
 #include "managers/ImportManager.h"
 #include "managers/ExportManager.h"
@@ -16,6 +18,9 @@
 #include <QSplitter>
 #include <QPushButton>
 #include <QStatusBar>
+#include <algorithm>
+#include <random>
+#include <numeric>
 
 namespace DatasetCreator {
 
@@ -67,6 +72,12 @@ void MainWindow::setupUI() {
     // Bottom section: Metadata editor
     metadataEditor_ = new MetadataEditor(this);
     
+    // Stats widget for subset distribution
+    statsWidget_ = new SubsetStatsWidget(this);
+    statsWidget_->setDataset(&currentDataset_);
+    statsWidget_->setMinimumHeight(60);
+    statsWidget_->setMaximumHeight(80);
+    
     // Vertical splitter for top/bottom sections
     QSplitter* verticalSplitter = new QSplitter(Qt::Vertical, this);
     verticalSplitter->addWidget(topSplitter);
@@ -77,6 +88,7 @@ void MainWindow::setupUI() {
     verticalSplitter->setStretchFactor(1, 30);
     
     mainLayout->addWidget(verticalSplitter);
+    mainLayout->addWidget(statsWidget_);
     
     // Connect signals
     connect(datasetView_, &DatasetView::sampleSelected,
@@ -123,6 +135,12 @@ void MainWindow::createMenuBar() {
     
     fileMenu->addSeparator();
     fileMenu->addAction(tr("E&xit"), this, &QWidget::close);
+    
+    // Dataset menu
+    QMenu* datasetMenu = menuBar()->addMenu(tr("&Dataset"));
+    
+    QAction* autoSplitAction = datasetMenu->addAction(tr("&Auto Split..."), this, &MainWindow::onAutoSplit);
+    autoSplitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
 }
 
 void MainWindow::onImportFiles() {
@@ -158,6 +176,7 @@ void MainWindow::onExportDataset() {
 void MainWindow::onSampleImported(const DatasetSample& sample) {
     currentDataset_.addSample(sample);
     datasetView_->addSample(sample);
+    statsWidget_->refresh();
     
     statusBar()->showMessage(
         tr("Imported: %1 (Total: %2 samples)")
@@ -218,8 +237,9 @@ void MainWindow::onMoveToSubsetRequested(int sampleIndex) {
         // Move sample to subset
         currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
         
-        // Refresh view
+        // Refresh views
         datasetView_->refresh();
+        statsWidget_->refresh();
         
         statusBar()->showMessage(tr("Moved sample to subset '%1'").arg(subsetName));
     }
@@ -241,6 +261,7 @@ void MainWindow::onDeleteSampleRequested(int sampleIndex) {
     if (reply == QMessageBox::Yes) {
         currentDataset_.removeSample(sampleIndex);
         datasetView_->refresh();
+        statsWidget_->refresh();
         
         // Clear selection
         currentSampleIndex_ = -1;
@@ -275,8 +296,9 @@ void MainWindow::onBatchMoveToSubsetRequested(const QList<int>& sampleIndices) {
             }
         }
         
-        // Refresh view
+        // Refresh views
         datasetView_->refresh();
+        statsWidget_->refresh();
         
         statusBar()->showMessage(tr("Moved %1 samples to subset '%2'")
             .arg(sampleIndices.size()).arg(subsetName));
@@ -301,6 +323,7 @@ void MainWindow::onSampleDraggedToSubset(const QString& sampleId, const QString&
         // Move sample from root to subset
         currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
         datasetView_->refresh();
+        statsWidget_->refresh();
         statusBar()->showMessage(tr("Moved sample to subset '%1'").arg(subsetName));
         return;
     }
@@ -322,6 +345,7 @@ void MainWindow::onSampleDraggedToSubset(const QString& sampleId, const QString&
                 }
                 
                 datasetView_->refresh();
+                statsWidget_->refresh();
                 statusBar()->showMessage(tr("Moved sample from '%1' to '%2'")
                     .arg(subset.name()).arg(subsetName));
                 return;
@@ -342,12 +366,112 @@ void MainWindow::onSampleDraggedToRoot(const QString& sampleId) {
                 // Move sample from subset back to root
                 currentDataset_.moveSampleFromSubset(subset.name(), i);
                 datasetView_->refresh();
+                statsWidget_->refresh();
                 statusBar()->showMessage(tr("Moved sample from '%1' back to root")
                     .arg(subset.name()));
                 return;
             }
         }
     }
+}
+
+void MainWindow::onAutoSplit() {
+    // Check if we have samples to split
+    if (currentDataset_.sampleCount() == 0) {
+        QMessageBox::warning(this, tr("No Samples"), 
+            tr("Cannot perform auto-split: no samples in the dataset."));
+        return;
+    }
+    
+    // Show auto-split dialog
+    AutoSplitDialog dialog(currentDataset_.sampleCount(), this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    
+    // Get split configuration
+    AutoSplitDialog::SplitConfig config = dialog.getConfig();
+    
+    // Collect all samples from root
+    QList<DatasetSample> samples = currentDataset_.samples();
+    if (samples.isEmpty()) {
+        QMessageBox::warning(this, tr("No Samples"), 
+            tr("Cannot perform auto-split: no samples in the root dataset."));
+        return;
+    }
+    
+    // Create indices for shuffling
+    std::vector<int> indices(samples.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    
+    // Shuffle if requested
+    if (config.shuffle) {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle(indices.begin(), indices.end(), g);
+    }
+    
+    // Calculate split sizes
+    int totalSamples = samples.size();
+    int trainingSize = static_cast<int>(totalSamples * config.trainingPercent / 100.0);
+    int validationSize = static_cast<int>(totalSamples * config.validationPercent / 100.0);
+    int testSize = totalSamples - trainingSize - validationSize; // Remaining samples
+    
+    // Ensure we have valid split sizes
+    if (trainingSize < 0) trainingSize = 0;
+    if (validationSize < 0) validationSize = 0;
+    if (testSize < 0) testSize = 0;
+    
+    // Create subsets if they don't exist and names are provided
+    if (!config.trainingName.isEmpty() && !currentDataset_.subsetNames().contains(config.trainingName)) {
+        currentDataset_.addSubset(DatasetSubset(config.trainingName));
+    }
+    if (!config.validationName.isEmpty() && !currentDataset_.subsetNames().contains(config.validationName)) {
+        currentDataset_.addSubset(DatasetSubset(config.validationName));
+    }
+    if (!config.testName.isEmpty() && !currentDataset_.subsetNames().contains(config.testName)) {
+        currentDataset_.addSubset(DatasetSubset(config.testName));
+    }
+    
+    // Move samples according to split (process in reverse order to preserve indices)
+    std::vector<std::pair<int, QString>> moves; // index, target subset
+    
+    int currentIndex = 0;
+    for (int i = 0; i < trainingSize && currentIndex < static_cast<int>(indices.size()); ++i, ++currentIndex) {
+        moves.push_back(std::make_pair(indices[currentIndex], config.trainingName));
+    }
+    for (int i = 0; i < validationSize && currentIndex < static_cast<int>(indices.size()); ++i, ++currentIndex) {
+        moves.push_back(std::make_pair(indices[currentIndex], config.validationName));
+    }
+    for (int i = 0; i < testSize && currentIndex < static_cast<int>(indices.size()); ++i, ++currentIndex) {
+        moves.push_back(std::make_pair(indices[currentIndex], config.testName));
+    }
+    
+    // Sort by index in descending order to preserve indices during moves
+    std::sort(moves.begin(), moves.end(), 
+        [](const auto& a, const auto& b) { return a.first > b.first; });
+    
+    // Perform the moves
+    for (const auto& move : moves) {
+        if (!move.second.isEmpty()) {
+            currentDataset_.moveSampleToSubset(move.first, move.second);
+        }
+    }
+    
+    // Refresh views
+    datasetView_->refresh();
+    statsWidget_->refresh();
+    
+    // Show success message
+    QString message = tr("Auto-split completed:\n");
+    if (trainingSize > 0) message += tr("- %1: %2 samples\n").arg(config.trainingName).arg(trainingSize);
+    if (validationSize > 0) message += tr("- %1: %2 samples\n").arg(config.validationName).arg(validationSize);
+    if (testSize > 0) message += tr("- %1: %2 samples").arg(config.testName).arg(testSize);
+    
+    QMessageBox::information(this, tr("Auto Split Complete"), message);
+    
+    statusBar()->showMessage(tr("Auto-split completed: %1 samples distributed")
+        .arg(totalSamples));
 }
 
 }

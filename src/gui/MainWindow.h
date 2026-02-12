@@ -11,6 +11,7 @@ class MetadataManager;
 class DatasetView;
 class SamplePreview;
 class MetadataEditor;
+class SubsetStatsWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -21,6 +22,7 @@ public:
 private slots:
     void onImportFiles();
     void onExportDataset();
+    void onAutoSplit();
     void onSampleImported(const DatasetSample& sample);
     void onSampleSelectedWithIndex(const DatasetSample& sample, int index);
     void onTagsChanged(const QStringList& tags);
@@ -44,6 +46,7 @@ private:
     DatasetView* datasetView_;
     SamplePreview* samplePreview_;
     MetadataEditor* metadataEditor_;
+    SubsetStatsWidget* statsWidget_;
     
     int currentSampleIndex_ = -1;
 };
