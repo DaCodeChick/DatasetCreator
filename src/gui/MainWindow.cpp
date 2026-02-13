@@ -5,6 +5,7 @@
 #include "SubsetDialog.h"
 #include "SubsetStatsWidget.h"
 #include "AutoSplitDialog.h"
+#include "KFoldDialog.h"
 #include "plugins/PluginManager.h"
 #include "managers/ImportManager.h"
 #include "managers/ExportManager.h"
@@ -18,6 +19,8 @@
 #include <QSplitter>
 #include <QPushButton>
 #include <QStatusBar>
+#include <QSet>
+#include <QMap>
 #include <algorithm>
 #include <random>
 #include <numeric>
@@ -141,6 +144,15 @@ void MainWindow::createMenuBar() {
     
     QAction* autoSplitAction = datasetMenu->addAction(tr("&Auto Split..."), this, &MainWindow::onAutoSplit);
     autoSplitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+    
+    QAction* kfoldAction = datasetMenu->addAction(tr("&K-Fold Cross-Validation..."), this, &MainWindow::onKFoldSplit);
+    kfoldAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
+    
+    datasetMenu->addSeparator();
+    
+    undoAction_ = datasetMenu->addAction(tr("&Undo Split"), this, &MainWindow::onUndoSplit);
+    undoAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Z));
+    undoAction_->setEnabled(false);
 }
 
 void MainWindow::onImportFiles() {
@@ -383,11 +395,24 @@ void MainWindow::onAutoSplit() {
         return;
     }
     
+    // Collect all available label keys from dataset
+    QSet<QString> labelKeysSet;
+    for (const auto& sample : currentDataset_.samples()) {
+        for (const QString& key : sample.metadata().labels.keys()) {
+            labelKeysSet.insert(key);
+        }
+    }
+    QStringList availableLabels = labelKeysSet.values();
+    availableLabels.sort();
+    
     // Show auto-split dialog
-    AutoSplitDialog dialog(currentDataset_.sampleCount(), this);
+    AutoSplitDialog dialog(currentDataset_.sampleCount(), availableLabels, this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
+    
+    // Save state before split for undo
+    saveStateBeforeSplit();
     
     // Get split configuration
     AutoSplitDialog::SplitConfig config = dialog.getConfig();
@@ -400,15 +425,49 @@ void MainWindow::onAutoSplit() {
         return;
     }
     
-    // Create indices for shuffling
+    // Create indices for splitting
     std::vector<int> indices(samples.size());
     std::iota(indices.begin(), indices.end(), 0);
     
-    // Shuffle if requested
-    if (config.shuffle) {
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::shuffle(indices.begin(), indices.end(), g);
+    // Apply stratified sampling if requested
+    if (config.stratified && !config.stratifyLabel.isEmpty()) {
+        // Group samples by label value
+        QMap<QString, std::vector<int>> labelGroups;
+        for (int i = 0; i < samples.size(); ++i) {
+            QVariant labelValue = samples[i].metadata().labels.value(config.stratifyLabel);
+            QString labelStr = labelValue.toString();
+            labelGroups[labelStr].push_back(i);
+        }
+        
+        // Shuffle within each group if requested
+        if (config.shuffle) {
+            std::random_device rd;
+            std::mt19937 g(rd());
+            for (auto& group : labelGroups) {
+                std::shuffle(group.begin(), group.end(), g);
+            }
+        }
+        
+        // Distribute samples from each group proportionally
+        indices.clear();
+        
+        for (const auto& group : labelGroups) {
+            int groupSize = group.size();
+            int groupTrainingSize = static_cast<int>(groupSize * config.trainingPercent / 100.0);
+            int groupValidationSize = static_cast<int>(groupSize * config.validationPercent / 100.0);
+            
+            // Add indices for this group in order: training, validation, test
+            for (int i = 0; i < groupSize; ++i) {
+                indices.push_back(group[i]);
+            }
+        }
+    } else {
+        // Non-stratified: shuffle if requested
+        if (config.shuffle) {
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(indices.begin(), indices.end(), g);
+        }
     }
     
     // Calculate split sizes
@@ -472,6 +531,248 @@ void MainWindow::onAutoSplit() {
     
     statusBar()->showMessage(tr("Auto-split completed: %1 samples distributed")
         .arg(totalSamples));
+}
+
+void MainWindow::onKFoldSplit() {
+    // Check if we have samples to split
+    if (currentDataset_.sampleCount() == 0) {
+        QMessageBox::warning(this, tr("No Samples"), 
+            tr("Cannot perform K-Fold split: no samples in the dataset."));
+        return;
+    }
+    
+    // Collect all available label keys from dataset
+    QSet<QString> labelKeysSet;
+    for (const auto& sample : currentDataset_.samples()) {
+        for (const QString& key : sample.metadata().labels.keys()) {
+            labelKeysSet.insert(key);
+        }
+    }
+    QStringList availableLabels = labelKeysSet.values();
+    availableLabels.sort();
+    
+    // Show K-Fold dialog
+    KFoldDialog dialog(currentDataset_.sampleCount(), availableLabels, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    
+    // Save state before split for undo
+    saveStateBeforeSplit();
+    
+    // Get K-Fold configuration
+    KFoldDialog::KFoldConfig config = dialog.getConfig();
+    
+    // Collect all samples from root
+    QList<DatasetSample> samples = currentDataset_.samples();
+    if (samples.isEmpty()) {
+        QMessageBox::warning(this, tr("No Samples"), 
+            tr("Cannot perform K-Fold split: no samples in the root dataset."));
+        return;
+    }
+    
+    int totalSamples = samples.size();
+    int numFolds = config.folds;
+    
+    // Check if we have enough samples
+    if (totalSamples < numFolds) {
+        QMessageBox::warning(this, tr("Insufficient Samples"), 
+            tr("Cannot perform %1-Fold split: need at least %1 samples, but only %2 available.")
+                .arg(numFolds).arg(totalSamples));
+        return;
+    }
+    
+    // Create indices for splitting
+    std::vector<int> indices(totalSamples);
+    std::iota(indices.begin(), indices.end(), 0);
+    
+    // Apply stratified K-Fold if requested
+    if (config.stratified && !config.stratifyLabel.isEmpty()) {
+        // Group samples by label value
+        QMap<QString, std::vector<int>> labelGroups;
+        for (int i = 0; i < samples.size(); ++i) {
+            QVariant labelValue = samples[i].metadata().labels.value(config.stratifyLabel);
+            QString labelStr = labelValue.toString();
+            labelGroups[labelStr].push_back(i);
+        }
+        
+        // Shuffle within each group if requested
+        if (config.shuffle) {
+            std::random_device rd;
+            std::mt19937 g(rd());
+            for (auto& group : labelGroups) {
+                std::shuffle(group.begin(), group.end(), g);
+            }
+        }
+        
+        // Distribute samples from each group to create stratified folds
+        std::vector<std::vector<int>> foldIndices(numFolds);
+        
+        for (const auto& group : labelGroups) {
+            // Distribute this group's samples evenly across folds
+            for (int i = 0; i < static_cast<int>(group.size()); ++i) {
+                int foldIndex = i % numFolds;
+                foldIndices[foldIndex].push_back(group[i]);
+            }
+        }
+        
+        // Flatten back to indices array
+        indices.clear();
+        for (int fold = 0; fold < numFolds; ++fold) {
+            for (int idx : foldIndices[fold]) {
+                indices.push_back(idx);
+            }
+        }
+    } else {
+        // Non-stratified: shuffle if requested
+        if (config.shuffle) {
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(indices.begin(), indices.end(), g);
+        }
+    }
+    
+    // Calculate fold size
+    int baseFoldSize = totalSamples / numFolds;
+    int remainder = totalSamples % numFolds;
+    
+    // Create K fold subsets
+    for (int fold = 0; fold < numFolds; ++fold) {
+        QString foldName = QString("%1%2").arg(config.prefixName).arg(fold + 1);
+        
+        // Create subset if it doesn't exist
+        if (!currentDataset_.subsetNames().contains(foldName)) {
+            currentDataset_.addSubset(DatasetSubset(foldName));
+        }
+    }
+    
+    // Assign samples to folds (process in reverse order to preserve indices)
+    std::vector<std::pair<int, QString>> moves; // index, target subset
+    
+    int currentIndex = 0;
+    for (int fold = 0; fold < numFolds; ++fold) {
+        int thisFoldSize = baseFoldSize + (fold < remainder ? 1 : 0);
+        QString foldName = QString("%1%2").arg(config.prefixName).arg(fold + 1);
+        
+        // Mark samples for this fold
+        for (int i = 0; i < thisFoldSize; ++i) {
+            moves.push_back(std::make_pair(indices[currentIndex + i], foldName));
+        }
+        
+        currentIndex += thisFoldSize;
+    }
+    
+    // Sort by index in descending order to preserve indices during moves
+    std::sort(moves.begin(), moves.end(), 
+        [](const auto& a, const auto& b) { return a.first > b.first; });
+    
+    // Perform the moves
+    for (const auto& move : moves) {
+        currentDataset_.moveSampleToSubset(move.first, move.second);
+    }
+    
+    // Refresh views
+    datasetView_->refresh();
+    statsWidget_->refresh();
+    
+    // Show success message with fold sizes
+    QString message = tr("K-Fold split completed:\n");
+    message += tr("- %1 folds created\n").arg(numFolds);
+    if (remainder > 0) {
+        message += tr("- Fold sizes: %1 folds with %2 samples, %3 folds with %4 samples\n")
+            .arg(remainder).arg(baseFoldSize + 1).arg(numFolds - remainder).arg(baseFoldSize);
+    } else {
+        message += tr("- Each fold contains %1 samples\n").arg(baseFoldSize);
+    }
+    message += tr("\nUse each fold as test set and combine others for training.");
+    
+    QMessageBox::information(this, tr("K-Fold Split Complete"), message);
+    
+    statusBar()->showMessage(tr("K-Fold split completed: %1 folds, %2 samples distributed")
+        .arg(numFolds).arg(totalSamples));
+}
+
+void MainWindow::saveStateBeforeSplit() {
+    SplitCommand command;
+    
+    // Save current state: all samples in root
+    for (const auto& sample : currentDataset_.samples()) {
+        command.addOriginalLocation(sample.metadata().id, ""); // Empty string = root
+    }
+    
+    // Save samples in subsets
+    for (const auto& subset : currentDataset_.subsets()) {
+        for (const auto& sample : subset.samples()) {
+            command.addOriginalLocation(sample.metadata().id, subset.name());
+        }
+    }
+    
+    command.setDescription("Split operation");
+    undoStack_.push(command);
+    
+    // Enable undo action
+    if (undoAction_) {
+        undoAction_->setEnabled(true);
+    }
+}
+
+void MainWindow::onUndoSplit() {
+    if (undoStack_.isEmpty()) {
+        QMessageBox::information(this, tr("No Action to Undo"),
+            tr("There are no split operations to undo."));
+        return;
+    }
+    
+    SplitCommand command = undoStack_.pop();
+    
+    // Clear all subsets
+    QStringList subsetNames = currentDataset_.subsetNames();
+    for (const QString& name : subsetNames) {
+        // Move all samples from subset back to root first
+        const DatasetSubset* subset = currentDataset_.getSubset(name);
+        if (subset) {
+            int sampleCount = subset->samples().size();
+            for (int i = sampleCount - 1; i >= 0; --i) {
+                currentDataset_.moveSampleFromSubset(name, i);
+            }
+        }
+    }
+    
+    // Now restore original locations
+    for (const auto& location : command.originalLocations()) {
+        const QString& sampleId = location.first;
+        const QString& subsetName = location.second;
+        
+        if (subsetName.isEmpty()) {
+            // Sample should be in root - it already is, do nothing
+            continue;
+        }
+        
+        // Find sample in root by ID
+        const auto& rootSamples = currentDataset_.samples();
+        for (int i = 0; i < rootSamples.size(); ++i) {
+            if (rootSamples[i].metadata().id == sampleId) {
+                // Create subset if it doesn't exist
+                if (!currentDataset_.subsetNames().contains(subsetName)) {
+                    currentDataset_.addSubset(DatasetSubset(subsetName));
+                }
+                // Move sample to original subset
+                currentDataset_.moveSampleToSubset(i, subsetName);
+                break;
+            }
+        }
+    }
+    
+    // Refresh views
+    datasetView_->refresh();
+    statsWidget_->refresh();
+    
+    // Disable undo action if stack is empty
+    if (undoStack_.isEmpty() && undoAction_) {
+        undoAction_->setEnabled(false);
+    }
+    
+    statusBar()->showMessage(tr("Undo split operation completed"));
 }
 
 }

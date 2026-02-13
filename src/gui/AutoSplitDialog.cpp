@@ -9,11 +9,20 @@
 
 namespace DatasetCreator {
 
-AutoSplitDialog::AutoSplitDialog(int totalSamples, QWidget* parent)
+AutoSplitDialog::AutoSplitDialog(int totalSamples, const QStringList& availableLabels, QWidget* parent)
     : QDialog(parent), totalSamples_(totalSamples)
 {
     setWindowTitle(tr("Automatic Dataset Split"));
     setupUI();
+    
+    // Populate label combo box
+    if (!availableLabels.isEmpty()) {
+        stratifyLabelCombo_->addItems(availableLabels);
+    } else {
+        stratifiedCheck_->setEnabled(false);
+        stratifiedCheck_->setToolTip(tr("No labels found in dataset"));
+    }
+    
     updateSampleCounts();
 }
 

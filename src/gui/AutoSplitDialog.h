@@ -5,17 +5,20 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
+#include <QStringList>
 
 namespace DatasetCreator {
 
+class Dataset;
+
 /**
  * @brief Dialog for automatically splitting dataset into subsets
- * Supports predefined ratios (70/20/10) or custom splits
+ * Supports predefined ratios (70/20/10) or custom splits with stratification
  */
 class AutoSplitDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit AutoSplitDialog(int totalSamples, QWidget* parent = nullptr);
+    explicit AutoSplitDialog(int totalSamples, const QStringList& availableLabels, QWidget* parent = nullptr);
     
     struct SplitConfig {
         QString trainingName;

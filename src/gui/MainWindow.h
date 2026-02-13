@@ -1,6 +1,8 @@
 #pragma once
 #include <QMainWindow>
+#include <QStack>
 #include "core/Dataset.h"
+#include "SplitCommand.h"
 
 namespace DatasetCreator {
 
@@ -23,6 +25,8 @@ private slots:
     void onImportFiles();
     void onExportDataset();
     void onAutoSplit();
+    void onKFoldSplit();
+    void onUndoSplit();
     void onSampleImported(const DatasetSample& sample);
     void onSampleSelectedWithIndex(const DatasetSample& sample, int index);
     void onTagsChanged(const QStringList& tags);
@@ -36,6 +40,7 @@ private slots:
 private:
     void setupUI();
     void createMenuBar();
+    void saveStateBeforeSplit();
     
     Dataset currentDataset_;
     PluginManager* pluginManager_;
@@ -49,6 +54,8 @@ private:
     SubsetStatsWidget* statsWidget_;
     
     int currentSampleIndex_ = -1;
+    QStack<SplitCommand> undoStack_;
+    QAction* undoAction_;
 };
 
 }

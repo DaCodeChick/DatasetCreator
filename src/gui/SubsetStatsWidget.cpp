@@ -4,6 +4,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFontMetrics>
+#include <QMouseEvent>
+#include <QToolTip>
 
 namespace DatasetCreator {
 
@@ -19,10 +21,11 @@ const QList<QColor> SubsetStatsWidget::PRESET_COLORS = {
 };
 
 SubsetStatsWidget::SubsetStatsWidget(QWidget* parent)
-    : QWidget(parent), dataset_(nullptr), totalSamples_(0)
+    : QWidget(parent), dataset_(nullptr), totalSamples_(0), hoveredSubset_(-1)
 {
     setMinimumHeight(150);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    setMouseTracking(true);  // Enable mouse tracking for hover effects
 }
 
 void SubsetStatsWidget::setDataset(Dataset* dataset) {
@@ -57,6 +60,8 @@ void SubsetStatsWidget::updateStats() {
         rootStats.count = rootCount;
         rootStats.percentage = (rootCount * 100.0) / totalSamples_;
         rootStats.color = QColor(189, 195, 199); // Light gray
+        rootStats.xStart = 0;
+        rootStats.xEnd = 0;
         stats_.append(rootStats);
     }
     
@@ -69,6 +74,8 @@ void SubsetStatsWidget::updateStats() {
         subsetStats.count = subset.sampleCount();
         subsetStats.percentage = (subsetStats.count * 100.0) / totalSamples_;
         subsetStats.color = PRESET_COLORS[i % PRESET_COLORS.size()];
+        subsetStats.xStart = 0;
+        subsetStats.xEnd = 0;
         stats_.append(subsetStats);
     }
 }
@@ -107,11 +114,20 @@ void SubsetStatsWidget::paintEvent(QPaintEvent* event) {
     
     // Draw horizontal stacked bar
     int currentX = barX;
-    for (const auto& stat : stats_) {
+    for (int i = 0; i < stats_.size(); ++i) {
+        auto& stat = stats_[i];
         int segmentWidth = (stat.count * barWidth) / totalSamples_;
         if (segmentWidth > 0) {
-            // Draw segment
-            painter.fillRect(currentX, barY, segmentWidth, barHeight, stat.color);
+            // Store coordinates for hover detection
+            stat.xStart = currentX;
+            stat.xEnd = currentX + segmentWidth;
+            
+            // Draw segment (slightly brighter if hovered)
+            QColor fillColor = stat.color;
+            if (i == hoveredSubset_) {
+                fillColor = fillColor.lighter(120);
+            }
+            painter.fillRect(currentX, barY, segmentWidth, barHeight, fillColor);
             
             // Draw border
             painter.setPen(QColor(255, 255, 255));
@@ -154,6 +170,66 @@ void SubsetStatsWidget::paintEvent(QPaintEvent* event) {
             legendY += 20;
         }
     }
+}
+
+void SubsetStatsWidget::mouseMoveEvent(QMouseEvent* event) {
+    QPoint pos = event->pos();
+    
+    // Check if mouse is over the bar area
+    int barY = 40;
+    int barHeight = 40;
+    
+    if (pos.y() >= barY && pos.y() <= barY + barHeight) {
+        // Find which subset is under the cursor
+        for (int i = 0; i < stats_.size(); ++i) {
+            if (pos.x() >= stats_[i].xStart && pos.x() <= stats_[i].xEnd) {
+                if (hoveredSubset_ != i) {
+                    hoveredSubset_ = i;
+                    update(); // Trigger repaint
+                    
+                    // Show tooltip
+                    const auto& stat = stats_[i];
+                    QString tooltip = QString("<b>%1</b><br>Count: %2<br>Percentage: %3%")
+                        .arg(stat.name)
+                        .arg(stat.count)
+                        .arg(stat.percentage, 0, 'f', 1);
+                    QToolTip::showText(event->globalPosition().toPoint(), tooltip, this);
+                }
+                return;
+            }
+        }
+    }
+    
+    // Not over any subset
+    if (hoveredSubset_ != -1) {
+        hoveredSubset_ = -1;
+        update();
+        QToolTip::hideText();
+    }
+}
+
+void SubsetStatsWidget::leaveEvent(QEvent* event) {
+    if (hoveredSubset_ != -1) {
+        hoveredSubset_ = -1;
+        update();
+        QToolTip::hideText();
+    }
+    QWidget::leaveEvent(event);
+}
+
+int SubsetStatsWidget::getSubsetAtPosition(const QPoint& pos) const {
+    int barY = 40;
+    int barHeight = 40;
+    
+    if (pos.y() >= barY && pos.y() <= barY + barHeight) {
+        for (int i = 0; i < stats_.size(); ++i) {
+            if (pos.x() >= stats_[i].xStart && pos.x() <= stats_[i].xEnd) {
+                return i;
+            }
+        }
+    }
+    
+    return -1;
 }
 
 }

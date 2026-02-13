@@ -20,21 +20,27 @@ public:
     
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     QSize sizeHint() const override;
     
 private:
     void updateStats();
+    int getSubsetAtPosition(const QPoint& pos) const;
     
     struct SubsetStats {
         QString name;
         int count;
         double percentage;
         QColor color;
+        int xStart;  // For hover detection
+        int xEnd;
     };
     
     Dataset* dataset_;
     QList<SubsetStats> stats_;
     int totalSamples_;
+    int hoveredSubset_;  // Index of currently hovered subset (-1 if none)
     
     // Predefined colors for subsets
     static const QList<QColor> PRESET_COLORS;

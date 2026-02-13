@@ -69,6 +69,7 @@ set(GUI_SOURCES
     src/gui/SubsetDialog.cpp
     src/gui/SubsetStatsWidget.cpp
     src/gui/AutoSplitDialog.cpp
+    src/gui/KFoldDialog.cpp
 )
 
 set(UTIL_SOURCES
