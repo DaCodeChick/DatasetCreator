@@ -36,6 +36,8 @@ private slots:
     void onBatchMoveToSubsetRequested(const QList<int>& sampleIndices);
     void onSampleDraggedToSubset(const QString& sampleId, const QString& subsetName);
     void onSampleDraggedToRoot(const QString& sampleId);
+    void onAddSubsetFromToolbar();
+    void onDeleteSubsetFromToolbar(const QString& subsetName);
     
 private:
     void setupUI();

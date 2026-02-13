@@ -14,6 +14,7 @@
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QInputDialog>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -119,6 +120,12 @@ void MainWindow::setupUI() {
             this, &MainWindow::onSampleDraggedToSubset);
     connect(datasetView_, &DatasetView::sampleDraggedToRoot,
             this, &MainWindow::onSampleDraggedToRoot);
+    
+    // Toolbar actions
+    connect(datasetView_, &DatasetView::addSubsetRequested,
+            this, &MainWindow::onAddSubsetFromToolbar);
+    connect(datasetView_, &DatasetView::deleteSubsetRequested,
+            this, &MainWindow::onDeleteSubsetFromToolbar);
     
     setCentralWidget(central);
     
@@ -773,6 +780,53 @@ void MainWindow::onUndoSplit() {
     }
     
     statusBar()->showMessage(tr("Undo split operation completed"));
+}
+
+void MainWindow::onAddSubsetFromToolbar() {
+    bool ok;
+    QString subsetName = QInputDialog::getText(this, tr("Add Subset"),
+        tr("Enter subset name:"), QLineEdit::Normal, "", &ok);
+    
+    if (ok && !subsetName.isEmpty()) {
+        if (currentDataset_.subsetNames().contains(subsetName)) {
+            QMessageBox::warning(this, tr("Duplicate Name"),
+                tr("A subset with name '%1' already exists.").arg(subsetName));
+            return;
+        }
+        
+        currentDataset_.addSubset(DatasetSubset(subsetName));
+        datasetView_->refresh();
+        statsWidget_->refresh();
+        statusBar()->showMessage(tr("Added subset '%1'").arg(subsetName));
+    }
+}
+
+void MainWindow::onDeleteSubsetFromToolbar(const QString& subsetName) {
+    if (subsetName.isEmpty()) return;
+    
+    QMessageBox::StandardButton reply = QMessageBox::question(this,
+        tr("Delete Subset"),
+        tr("Are you sure you want to delete subset '%1'?\nSamples will be moved back to root.")
+            .arg(subsetName),
+        QMessageBox::Yes | QMessageBox::No);
+    
+    if (reply == QMessageBox::Yes) {
+        // Move all samples from subset back to root first
+        const DatasetSubset* subset = currentDataset_.getSubset(subsetName);
+        if (subset) {
+            int sampleCount = subset->samples().size();
+            for (int i = sampleCount - 1; i >= 0; --i) {
+                currentDataset_.moveSampleFromSubset(subsetName, i);
+            }
+        }
+        
+        // Remove the subset
+        currentDataset_.removeSubset(subsetName);
+        
+        datasetView_->refresh();
+        statsWidget_->refresh();
+        statusBar()->showMessage(tr("Deleted subset '%1'").arg(subsetName));
+    }
 }
 
 }

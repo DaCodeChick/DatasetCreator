@@ -5,6 +5,8 @@
 #include <QStandardItem>
 #include <QMenu>
 #include <QAction>
+#include <QToolBar>
+#include <QStyle>
 
 namespace DatasetCreator {
 
@@ -17,6 +19,45 @@ DatasetView::DatasetView(QWidget* parent)
 void DatasetView::setupUI() {
     QVBoxLayout* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    
+    // Create toolbar with icon buttons
+    toolbar_ = new QToolBar(this);
+    toolbar_->setIconSize(QSize(16, 16));
+    toolbar_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    
+    // Add Subset action
+    addSubsetAction_ = toolbar_->addAction(
+        style()->standardIcon(QStyle::SP_FileDialogNewFolder),
+        tr("Add Subset")
+    );
+    connect(addSubsetAction_, &QAction::triggered, this, &DatasetView::onAddSubset);
+    
+    // Delete Subset action
+    deleteSubsetAction_ = toolbar_->addAction(
+        style()->standardIcon(QStyle::SP_TrashIcon),
+        tr("Delete")
+    );
+    connect(deleteSubsetAction_, &QAction::triggered, this, &DatasetView::onDeleteSubset);
+    deleteSubsetAction_->setEnabled(false);
+    
+    toolbar_->addSeparator();
+    
+    // Expand All action
+    expandAllAction_ = toolbar_->addAction(
+        style()->standardIcon(QStyle::SP_TitleBarUnshadeButton),
+        tr("Expand All")
+    );
+    connect(expandAllAction_, &QAction::triggered, this, &DatasetView::onExpandAll);
+    
+    // Collapse All action
+    collapseAllAction_ = toolbar_->addAction(
+        style()->standardIcon(QStyle::SP_TitleBarShadeButton),
+        tr("Collapse All")
+    );
+    connect(collapseAllAction_, &QAction::triggered, this, &DatasetView::onCollapseAll);
+    
+    layout->addWidget(toolbar_);
     
     treeView_ = new QTreeView(this);
     model_ = new DatasetTreeModel(this);
@@ -239,12 +280,22 @@ DatasetSample* DatasetView::getSelectedSample() {
 }
 
 void DatasetView::onItemClicked(const QModelIndex& index) {
-    if (!index.isValid() || !dataset_) return;
+    if (!index.isValid() || !dataset_) {
+        deleteSubsetAction_->setEnabled(false);
+        return;
+    }
     
     QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
-    if (!item) return;
+    if (!item) {
+        deleteSubsetAction_->setEnabled(false);
+        return;
+    }
     
     bool isSubset = item->data(Qt::UserRole + 1).toBool();
+    
+    // Enable delete button if subset is selected
+    deleteSubsetAction_->setEnabled(isSubset);
+    
     if (isSubset) return;
     
     int sampleIndex = item->data(Qt::UserRole).toInt();
@@ -361,6 +412,25 @@ QList<int> DatasetView::getSelectedSampleIndices() const {
     }
     
     return indices;
+}
+
+void DatasetView::onAddSubset() {
+    emit addSubsetRequested();
+}
+
+void DatasetView::onDeleteSubset() {
+    QString subsetName = getSelectedSubsetName();
+    if (!subsetName.isEmpty()) {
+        emit deleteSubsetRequested(subsetName);
+    }
+}
+
+void DatasetView::onExpandAll() {
+    treeView_->expandAll();
+}
+
+void DatasetView::onCollapseAll() {
+    treeView_->collapseAll();
 }
 
 }

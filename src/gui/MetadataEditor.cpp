@@ -25,6 +25,9 @@ void MetadataEditor::setupUI() {
     
     mainLayout->addWidget(infoGroup);
     
+    // Tags and Labels section (side by side)
+    QHBoxLayout* metadataLayout = new QHBoxLayout();
+    
     // Tags section
     QGroupBox* tagsGroup = new QGroupBox("Tags", this);
     QVBoxLayout* tagsLayout = new QVBoxLayout(tagsGroup);
@@ -37,7 +40,7 @@ void MetadataEditor::setupUI() {
     connect(addTagButton_, &QPushButton::clicked, this, &MetadataEditor::onAddTag);
     tagsLayout->addWidget(addTagButton_);
     
-    mainLayout->addWidget(tagsGroup);
+    metadataLayout->addWidget(tagsGroup);
     
     // Labels section
     QGroupBox* labelsGroup = new QGroupBox("Labels", this);
@@ -51,7 +54,9 @@ void MetadataEditor::setupUI() {
     connect(addLabelButton_, &QPushButton::clicked, this, &MetadataEditor::onAddLabel);
     labelsLayout->addWidget(addLabelButton_);
     
-    mainLayout->addWidget(labelsGroup);
+    metadataLayout->addWidget(labelsGroup);
+    
+    mainLayout->addLayout(metadataLayout);
     
     // Apply button
     applyButton_ = new QPushButton("Apply Changes", this);

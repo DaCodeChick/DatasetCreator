@@ -1,6 +1,8 @@
 #pragma once
 #include <QWidget>
 #include <QTreeView>
+#include <QToolBar>
+#include <QAction>
 #include "core/Dataset.h"
 #include "DatasetTreeModel.h"
 
@@ -29,10 +31,18 @@ signals:
     void batchMoveToSubsetRequested(const QList<int>& sampleIndices);
     void sampleDraggedToSubset(const QString& sampleId, const QString& subsetName);
     void sampleDraggedToRoot(const QString& sampleId);
+    void addSubsetRequested();
+    void deleteSubsetRequested(const QString& subsetName);
+    void expandAllRequested();
+    void collapseAllRequested();
     
 private slots:
     void onItemClicked(const QModelIndex& index);
     void showContextMenu(const QPoint& pos);
+    void onAddSubset();
+    void onDeleteSubset();
+    void onExpandAll();
+    void onCollapseAll();
     
 private:
     void setupUI();
@@ -41,6 +51,11 @@ private:
     QTreeView* treeView_;
     DatasetTreeModel* model_;
     Dataset* dataset_;
+    QToolBar* toolbar_;
+    QAction* addSubsetAction_;
+    QAction* deleteSubsetAction_;
+    QAction* expandAllAction_;
+    QAction* collapseAllAction_;
 };
 
 }
