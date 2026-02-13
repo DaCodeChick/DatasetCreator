@@ -10,9 +10,11 @@
 #include "managers/ImportManager.h"
 #include "managers/ExportManager.h"
 #include "managers/MetadataManager.h"
+#include "managers/ProjectManager.h"
 #include <QMenu>
 #include <QMenuBar>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QVBoxLayout>
@@ -30,6 +32,7 @@ namespace DatasetCreator {
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
+    , hasUnsavedChanges_(false)
 {
     currentDataset_ = Dataset("My Dataset");
     
@@ -37,6 +40,7 @@ MainWindow::MainWindow(QWidget* parent)
     importManager_ = new ImportManager(pluginManager_, this);
     exportManager_ = new ExportManager(pluginManager_, this);
     metadataManager_ = new MetadataManager(this);
+    projectManager_ = new ProjectManager(this);
     
     setupUI();
     createMenuBar();
@@ -44,7 +48,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(importManager_, &ImportManager::sampleImported, 
             this, &MainWindow::onSampleImported);
     
-    setWindowTitle("Dataset Creator");
+    updateWindowTitle();
     resize(1200, 800);
 }
 
@@ -141,6 +145,22 @@ void MainWindow::setupUI() {
 void MainWindow::createMenuBar() {
     QMenu* fileMenu = menuBar()->addMenu(tr("&File"));
     
+    // Project operations
+    QAction* newAction = fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNewProject);
+    newAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
+    
+    QAction* openAction = fileMenu->addAction(tr("&Open Project..."), this, &MainWindow::onOpenProject);
+    openAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
+    
+    QAction* saveAction = fileMenu->addAction(tr("&Save Project"), this, &MainWindow::onSaveProject);
+    saveAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
+    
+    QAction* saveAsAction = fileMenu->addAction(tr("Save Project &As..."), this, &MainWindow::onSaveProjectAs);
+    saveAsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+    
+    fileMenu->addSeparator();
+    
+    // Import/Export operations
     QAction* importAction = fileMenu->addAction(tr("&Import Files..."), this, &MainWindow::onImportFiles);
     importAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
     
@@ -200,6 +220,7 @@ void MainWindow::onSampleImported(const DatasetSample& sample) {
     currentDataset_.addSample(sample);
     datasetView_->addSample(sample);
     statsWidget_->refresh();
+    setUnsavedChanges(true);
     
     statusBar()->showMessage(
         tr("Imported: %1 (Total: %2 samples)")
@@ -872,6 +893,143 @@ void MainWindow::onDeleteSamplesFromToolbar() {
         datasetView_->refresh();
         statsWidget_->refresh();
         statusBar()->showMessage(tr("Deleted %1 sample(s)").arg(selectedIndices.size()));
+    }
+}
+
+// Project Management
+
+void MainWindow::onNewProject() {
+    if (!promptSaveChanges()) {
+        return;  // User cancelled
+    }
+    
+    currentDataset_ = Dataset("New Dataset");
+    currentProjectPath_.clear();
+    hasUnsavedChanges_ = false;
+    
+    datasetView_->refresh();
+    statsWidget_->refresh();
+    samplePreview_->clear();
+    metadataEditor_->clear();
+    
+    updateWindowTitle();
+    statusBar()->showMessage(tr("New project created"));
+}
+
+void MainWindow::onOpenProject() {
+    if (!promptSaveChanges()) {
+        return;  // User cancelled
+    }
+    
+    QString fileName = QFileDialog::getOpenFileName(
+        this, tr("Open Project"), QString(),
+        tr("Dataset Creator Project (*.dscp);;All Files (*.*)")
+    );
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    Dataset loadedDataset;
+    if (projectManager_->loadProject(fileName, loadedDataset)) {
+        currentDataset_ = loadedDataset;
+        currentProjectPath_ = fileName;
+        hasUnsavedChanges_ = false;
+        
+        datasetView_->refresh();
+        statsWidget_->refresh();
+        samplePreview_->clear();
+        metadataEditor_->clear();
+        
+        updateWindowTitle();
+        statusBar()->showMessage(tr("Project loaded: %1").arg(fileName));
+    } else {
+        QMessageBox::warning(this, tr("Load Error"),
+            tr("Failed to load project: %1").arg(projectManager_->lastError()));
+    }
+}
+
+void MainWindow::onSaveProject() {
+    if (currentProjectPath_.isEmpty()) {
+        onSaveProjectAs();
+        return;
+    }
+    
+    if (projectManager_->saveProject(currentDataset_, currentProjectPath_)) {
+        hasUnsavedChanges_ = false;
+        updateWindowTitle();
+        statusBar()->showMessage(tr("Project saved: %1").arg(currentProjectPath_));
+    } else {
+        QMessageBox::warning(this, tr("Save Error"),
+            tr("Failed to save project: %1").arg(projectManager_->lastError()));
+    }
+}
+
+void MainWindow::onSaveProjectAs() {
+    QString fileName = QFileDialog::getSaveFileName(
+        this, tr("Save Project As"), QString(),
+        tr("Dataset Creator Project (*.dscp)")
+    );
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    // Add extension if not present
+    if (!fileName.endsWith(".dscp", Qt::CaseInsensitive)) {
+        fileName += ".dscp";
+    }
+    
+    if (projectManager_->saveProject(currentDataset_, fileName)) {
+        currentProjectPath_ = fileName;
+        hasUnsavedChanges_ = false;
+        updateWindowTitle();
+        statusBar()->showMessage(tr("Project saved: %1").arg(fileName));
+    } else {
+        QMessageBox::warning(this, tr("Save Error"),
+            tr("Failed to save project: %1").arg(projectManager_->lastError()));
+    }
+}
+
+void MainWindow::setUnsavedChanges(bool hasChanges) {
+    hasUnsavedChanges_ = hasChanges;
+    updateWindowTitle();
+}
+
+void MainWindow::updateWindowTitle() {
+    QString title = "Dataset Creator";
+    
+    if (!currentProjectPath_.isEmpty()) {
+        QFileInfo fileInfo(currentProjectPath_);
+        title += " - " + fileInfo.fileName();
+    } else if (!currentDataset_.metadata().name.isEmpty()) {
+        title += " - " + currentDataset_.metadata().name;
+    }
+    
+    if (hasUnsavedChanges_) {
+        title += " *";
+    }
+    
+    setWindowTitle(title);
+}
+
+bool MainWindow::promptSaveChanges() {
+    if (!hasUnsavedChanges_) {
+        return true;
+    }
+    
+    QMessageBox::StandardButton reply = QMessageBox::question(this,
+        tr("Unsaved Changes"),
+        tr("You have unsaved changes. Do you want to save them?"),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    
+    if (reply == QMessageBox::Save) {
+        onSaveProject();
+        return !hasUnsavedChanges_;  // Return false if save failed
+    } else if (reply == QMessageBox::Discard) {
+        return true;
+    } else {
+        return false;  // Cancel
     }
 }
 

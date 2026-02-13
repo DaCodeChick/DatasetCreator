@@ -56,6 +56,7 @@ set(MANAGER_SOURCES
     src/managers/ImportManager.cpp
     src/managers/ExportManager.cpp
     src/managers/MetadataManager.cpp
+    src/managers/ProjectManager.cpp
 )
 
 set(GUI_SOURCES

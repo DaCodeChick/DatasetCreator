@@ -10,6 +10,7 @@ class PluginManager;
 class ImportManager;
 class ExportManager;
 class MetadataManager;
+class ProjectManager;
 class DatasetView;
 class SamplePreview;
 class MetadataEditor;
@@ -22,6 +23,10 @@ public:
     ~MainWindow();
     
 private slots:
+    void onNewProject();
+    void onOpenProject();
+    void onSaveProject();
+    void onSaveProjectAs();
     void onImportFiles();
     void onExportDataset();
     void onAutoSplit();
@@ -45,12 +50,19 @@ private:
     void setupUI();
     void createMenuBar();
     void saveStateBeforeSplit();
+    void setUnsavedChanges(bool hasChanges);
+    void updateWindowTitle();
+    bool promptSaveChanges();  // Returns false if user cancels
     
     Dataset currentDataset_;
+    QString currentProjectPath_;
+    bool hasUnsavedChanges_;
+    
     PluginManager* pluginManager_;
     ImportManager* importManager_;
     ExportManager* exportManager_;
     MetadataManager* metadataManager_;
+    ProjectManager* projectManager_;
     
     DatasetView* datasetView_;
     SamplePreview* samplePreview_;
