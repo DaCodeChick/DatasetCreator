@@ -126,6 +126,10 @@ void MainWindow::setupUI() {
             this, &MainWindow::onAddSubsetFromToolbar);
     connect(datasetView_, &DatasetView::deleteSubsetRequested,
             this, &MainWindow::onDeleteSubsetFromToolbar);
+    connect(datasetView_, &DatasetView::importFilesRequested,
+            this, &MainWindow::onImportFilesFromToolbar);
+    connect(datasetView_, &DatasetView::deleteSamplesRequested,
+            this, &MainWindow::onDeleteSamplesFromToolbar);
     
     setCentralWidget(central);
     
@@ -826,6 +830,48 @@ void MainWindow::onDeleteSubsetFromToolbar(const QString& subsetName) {
         datasetView_->refresh();
         statsWidget_->refresh();
         statusBar()->showMessage(tr("Deleted subset '%1'").arg(subsetName));
+    }
+}
+
+void MainWindow::onImportFilesFromToolbar() {
+    // Reuse existing import functionality
+    onImportFiles();
+}
+
+void MainWindow::onDeleteSamplesFromToolbar() {
+    // Get selected sample indices from DatasetView
+    QList<int> selectedIndices = datasetView_->getSelectedSampleIndices();
+    
+    if (selectedIndices.isEmpty()) {
+        return;
+    }
+    
+    // Confirm deletion
+    QString message;
+    if (selectedIndices.size() == 1) {
+        message = tr("Are you sure you want to delete 1 sample?");
+    } else {
+        message = tr("Are you sure you want to delete %1 samples?").arg(selectedIndices.size());
+    }
+    
+    QMessageBox::StandardButton reply = QMessageBox::question(this,
+        tr("Delete Sample(s)"),
+        message,
+        QMessageBox::Yes | QMessageBox::No);
+    
+    if (reply == QMessageBox::Yes) {
+        // Sort in descending order to delete from end to start (avoids index shifting issues)
+        std::sort(selectedIndices.begin(), selectedIndices.end(), std::greater<int>());
+        
+        // Delete each sample
+        for (int index : selectedIndices) {
+            onDeleteSampleRequested(index);
+        }
+        
+        // Refresh views
+        datasetView_->refresh();
+        statsWidget_->refresh();
+        statusBar()->showMessage(tr("Deleted %1 sample(s)").arg(selectedIndices.size()));
     }
 }
 

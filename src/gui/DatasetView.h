@@ -35,6 +35,8 @@ signals:
     void deleteSubsetRequested(const QString& subsetName);
     void expandAllRequested();
     void collapseAllRequested();
+    void importFilesRequested();
+    void deleteSamplesRequested();
     
 private slots:
     void onItemClicked(const QModelIndex& index);
@@ -43,6 +45,8 @@ private slots:
     void onDeleteSubset();
     void onExpandAll();
     void onCollapseAll();
+    void onImportFiles();
+    void onDeleteSamples();
     
 private:
     void setupUI();
@@ -52,6 +56,8 @@ private:
     DatasetTreeModel* model_;
     Dataset* dataset_;
     QToolBar* toolbar_;
+    QAction* importFilesAction_;
+    QAction* deleteSamplesAction_;
     QAction* addSubsetAction_;
     QAction* deleteSubsetAction_;
     QAction* expandAllAction_;

@@ -38,6 +38,8 @@ private slots:
     void onSampleDraggedToRoot(const QString& sampleId);
     void onAddSubsetFromToolbar();
     void onDeleteSubsetFromToolbar(const QString& subsetName);
+    void onImportFilesFromToolbar();
+    void onDeleteSamplesFromToolbar();
     
 private:
     void setupUI();

@@ -26,6 +26,23 @@ void DatasetView::setupUI() {
     toolbar_->setIconSize(QSize(16, 16));
     toolbar_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     
+    // Import Files action
+    importFilesAction_ = toolbar_->addAction(
+        style()->standardIcon(QStyle::SP_FileDialogStart),
+        tr("Import Files")
+    );
+    connect(importFilesAction_, &QAction::triggered, this, &DatasetView::onImportFiles);
+    
+    // Delete Sample(s) action
+    deleteSamplesAction_ = toolbar_->addAction(
+        style()->standardIcon(QStyle::SP_DialogDiscardButton),
+        tr("Delete Sample")
+    );
+    connect(deleteSamplesAction_, &QAction::triggered, this, &DatasetView::onDeleteSamples);
+    deleteSamplesAction_->setEnabled(false);
+    
+    toolbar_->addSeparator();
+    
     // Add Subset action
     addSubsetAction_ = toolbar_->addAction(
         style()->standardIcon(QStyle::SP_FileDialogNewFolder),
@@ -36,7 +53,7 @@ void DatasetView::setupUI() {
     // Delete Subset action
     deleteSubsetAction_ = toolbar_->addAction(
         style()->standardIcon(QStyle::SP_TrashIcon),
-        tr("Delete")
+        tr("Delete Subset")
     );
     connect(deleteSubsetAction_, &QAction::triggered, this, &DatasetView::onDeleteSubset);
     deleteSubsetAction_->setEnabled(false);
@@ -282,19 +299,24 @@ DatasetSample* DatasetView::getSelectedSample() {
 void DatasetView::onItemClicked(const QModelIndex& index) {
     if (!index.isValid() || !dataset_) {
         deleteSubsetAction_->setEnabled(false);
+        deleteSamplesAction_->setEnabled(false);
         return;
     }
     
     QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
     if (!item) {
         deleteSubsetAction_->setEnabled(false);
+        deleteSamplesAction_->setEnabled(false);
         return;
     }
     
     bool isSubset = item->data(Qt::UserRole + 1).toBool();
     
-    // Enable delete button if subset is selected
+    // Enable delete subset button if subset is selected
     deleteSubsetAction_->setEnabled(isSubset);
+    
+    // Enable delete sample button if sample is selected
+    deleteSamplesAction_->setEnabled(!isSubset);
     
     if (isSubset) return;
     
@@ -431,6 +453,14 @@ void DatasetView::onExpandAll() {
 
 void DatasetView::onCollapseAll() {
     treeView_->collapseAll();
+}
+
+void DatasetView::onImportFiles() {
+    emit importFilesRequested();
+}
+
+void DatasetView::onDeleteSamples() {
+    emit deleteSamplesRequested();
 }
 
 }
