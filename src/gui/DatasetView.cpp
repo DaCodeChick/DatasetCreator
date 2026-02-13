@@ -352,17 +352,59 @@ bool DatasetView::isSubsetSelected() const {
 
 void DatasetView::showContextMenu(const QPoint& pos) {
     QModelIndex index = treeView_->indexAt(pos);
-    if (!index.isValid()) return;
+    
+    QMenu contextMenu(this);
+    
+    // Context menu for empty space (root)
+    if (!index.isValid()) {
+        QAction* importAction = contextMenu.addAction(tr("Import Files..."));
+        contextMenu.addSeparator();
+        QAction* addSubsetAction = contextMenu.addAction(tr("Add Subset..."));
+        contextMenu.addSeparator();
+        QAction* expandAction = contextMenu.addAction(tr("Expand All"));
+        QAction* collapseAction = contextMenu.addAction(tr("Collapse All"));
+        
+        QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
+        
+        if (selectedAction == importAction) {
+            emit importFilesRequested();
+        } else if (selectedAction == addSubsetAction) {
+            emit addSubsetRequested();
+        } else if (selectedAction == expandAction) {
+            treeView_->expandAll();
+        } else if (selectedAction == collapseAction) {
+            treeView_->collapseAll();
+        }
+        return;
+    }
     
     QStandardItem* item = model_->itemFromIndex(index.siblingAtColumn(0));
     if (!item) return;
     
     bool isSubset = item->data(Qt::UserRole + 1).toBool();
     
-    QMenu contextMenu(this);
-    
     if (isSubset) {
-        // Context menu for subsets - coming in future phase
+        // Context menu for subsets
+        QString subsetName = item->text();
+        
+        QAction* addSubsetAction = contextMenu.addAction(tr("Add Subset..."));
+        contextMenu.addSeparator();
+        QAction* deleteSubsetAction = contextMenu.addAction(tr("Delete Subset '%1'").arg(subsetName));
+        contextMenu.addSeparator();
+        QAction* expandAction = contextMenu.addAction(tr("Expand All"));
+        QAction* collapseAction = contextMenu.addAction(tr("Collapse All"));
+        
+        QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
+        
+        if (selectedAction == addSubsetAction) {
+            emit addSubsetRequested();
+        } else if (selectedAction == deleteSubsetAction) {
+            emit deleteSubsetRequested(subsetName);
+        } else if (selectedAction == expandAction) {
+            treeView_->expandAll();
+        } else if (selectedAction == collapseAction) {
+            treeView_->collapseAll();
+        }
         return;
     }
     
@@ -375,21 +417,21 @@ void DatasetView::showContextMenu(const QPoint& pos) {
     bool multipleSelected = selectedIndexes.size() > 1;
     
     if (multipleSelected) {
-        QAction* batchMoveAction = contextMenu.addAction("Move Selected to Subset...");
+        QAction* batchMoveAction = contextMenu.addAction(tr("Move Selected to Subset..."));
         contextMenu.addSeparator();
-        QAction* batchDeleteAction = contextMenu.addAction("Delete Selected Samples");
+        QAction* batchDeleteAction = contextMenu.addAction(tr("Delete Selected Samples"));
         
         QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
         
         if (selectedAction == batchMoveAction) {
             emit batchMoveToSubsetRequested(getSelectedSampleIndices());
         } else if (selectedAction == batchDeleteAction) {
-            // Will implement batch delete in next iteration
+            emit deleteSamplesRequested();
         }
     } else {
-        QAction* moveToSubsetAction = contextMenu.addAction("Move to Subset...");
+        QAction* moveToSubsetAction = contextMenu.addAction(tr("Move to Subset..."));
         contextMenu.addSeparator();
-        QAction* deleteAction = contextMenu.addAction("Delete Sample");
+        QAction* deleteAction = contextMenu.addAction(tr("Delete Sample"));
         
         QAction* selectedAction = contextMenu.exec(treeView_->viewport()->mapToGlobal(pos));
         
