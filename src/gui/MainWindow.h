@@ -49,10 +49,13 @@ private slots:
 private:
     void setupUI();
     void createMenuBar();
+    void connectSignals();
     void saveStateBeforeSplit();
     void setUnsavedChanges(bool hasChanges);
     void updateWindowTitle();
     bool promptSaveChanges();  // Returns false if user cancels
+    void refreshAllViews();
+    void markAsModified();  // Convenience for setUnsavedChanges(true)
     
     Dataset currentDataset_;
     QString currentProjectPath_;

@@ -44,9 +44,7 @@ MainWindow::MainWindow(QWidget* parent)
     
     setupUI();
     createMenuBar();
-    
-    connect(importManager_, &ImportManager::sampleImported, 
-            this, &MainWindow::onSampleImported);
+    connectSignals();
     
     updateWindowTitle();
     resize(1200, 800);
@@ -98,7 +96,19 @@ void MainWindow::setupUI() {
     mainLayout->addWidget(verticalSplitter);
     mainLayout->addWidget(statsWidget_);
     
-    // Connect signals
+    setCentralWidget(central);
+    
+    // Status bar
+    statusBar()->showMessage("Ready - " + 
+        QString::number(currentDataset_.totalSampleCount()) + " samples loaded");
+}
+
+void MainWindow::connectSignals() {
+    // Import manager
+    connect(importManager_, &ImportManager::sampleImported, 
+            this, &MainWindow::onSampleImported);
+    
+    // Dataset view - display connections
     connect(datasetView_, &DatasetView::sampleSelected,
             samplePreview_, &SamplePreview::showSample);
     connect(datasetView_, &DatasetView::sampleSelected,
@@ -106,6 +116,7 @@ void MainWindow::setupUI() {
     connect(datasetView_, &DatasetView::sampleSelectedWithIndex,
             this, &MainWindow::onSampleSelectedWithIndex);
     
+    // Metadata editor
     connect(metadataEditor_, &MetadataEditor::tagsChanged,
             this, &MainWindow::onTagsChanged);
     connect(metadataEditor_, &MetadataEditor::labelsChanged,
@@ -134,12 +145,6 @@ void MainWindow::setupUI() {
             this, &MainWindow::onImportFilesFromToolbar);
     connect(datasetView_, &DatasetView::deleteSamplesRequested,
             this, &MainWindow::onDeleteSamplesFromToolbar);
-    
-    setCentralWidget(central);
-    
-    // Status bar
-    statusBar()->showMessage("Ready - " + 
-        QString::number(currentDataset_.totalSampleCount()) + " samples loaded");
 }
 
 void MainWindow::createMenuBar() {
@@ -220,7 +225,7 @@ void MainWindow::onSampleImported(const DatasetSample& sample) {
     currentDataset_.addSample(sample);
     datasetView_->addSample(sample);
     statsWidget_->refresh();
-    setUnsavedChanges(true);
+    markAsModified();
     
     statusBar()->showMessage(
         tr("Imported: %1 (Total: %2 samples)")
@@ -237,6 +242,7 @@ void MainWindow::onTagsChanged(const QStringList& tags) {
     if (currentSampleIndex_ < 0) return;
     
     if (currentDataset_.updateSampleTags(currentSampleIndex_, tags)) {
+        markAsModified();
         datasetView_->refresh();
         statusBar()->showMessage(tr("Tags updated for sample %1").arg(currentSampleIndex_));
     }
@@ -257,6 +263,7 @@ void MainWindow::onLabelsChanged(const QStringList& labels) {
     }
     
     if (currentDataset_.updateSampleLabels(currentSampleIndex_, labelsMap)) {
+        markAsModified();
         datasetView_->refresh();
         statusBar()->showMessage(tr("Labels updated for sample %1").arg(currentSampleIndex_));
     }
@@ -282,8 +289,8 @@ void MainWindow::onMoveToSubsetRequested(int sampleIndex) {
         currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
         
         // Refresh views
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        refreshAllViews();
+        markAsModified();
         
         statusBar()->showMessage(tr("Moved sample to subset '%1'").arg(subsetName));
     }
@@ -304,8 +311,8 @@ void MainWindow::onDeleteSampleRequested(int sampleIndex) {
     
     if (reply == QMessageBox::Yes) {
         currentDataset_.removeSample(sampleIndex);
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        markAsModified();
+        refreshAllViews();
         
         // Clear selection
         currentSampleIndex_ = -1;
@@ -341,8 +348,8 @@ void MainWindow::onBatchMoveToSubsetRequested(const QList<int>& sampleIndices) {
         }
         
         // Refresh views
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        markAsModified();
+        refreshAllViews();
         
         statusBar()->showMessage(tr("Moved %1 samples to subset '%2'")
             .arg(sampleIndices.size()).arg(subsetName));
@@ -366,8 +373,8 @@ void MainWindow::onSampleDraggedToSubset(const QString& sampleId, const QString&
     if (sampleIndex >= 0) {
         // Move sample from root to subset
         currentDataset_.moveSampleToSubset(sampleIndex, subsetName);
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        markAsModified();
+        refreshAllViews();
         statusBar()->showMessage(tr("Moved sample to subset '%1'").arg(subsetName));
         return;
     }
@@ -388,8 +395,8 @@ void MainWindow::onSampleDraggedToSubset(const QString& sampleId, const QString&
                     }
                 }
                 
-                datasetView_->refresh();
-                statsWidget_->refresh();
+                markAsModified();
+                refreshAllViews();
                 statusBar()->showMessage(tr("Moved sample from '%1' to '%2'")
                     .arg(subset.name()).arg(subsetName));
                 return;
@@ -409,8 +416,8 @@ void MainWindow::onSampleDraggedToRoot(const QString& sampleId) {
             if (subset.samples()[i].metadata().id == sampleId) {
                 // Move sample from subset back to root
                 currentDataset_.moveSampleFromSubset(subset.name(), i);
-                datasetView_->refresh();
-                statsWidget_->refresh();
+                markAsModified();
+                refreshAllViews();
                 statusBar()->showMessage(tr("Moved sample from '%1' back to root")
                     .arg(subset.name()));
                 return;
@@ -550,8 +557,8 @@ void MainWindow::onAutoSplit() {
     }
     
     // Refresh views
-    datasetView_->refresh();
-    statsWidget_->refresh();
+    markAsModified();
+    refreshAllViews();
     
     // Show success message
     QString message = tr("Auto-split completed:\n");
@@ -704,8 +711,8 @@ void MainWindow::onKFoldSplit() {
     }
     
     // Refresh views
-    datasetView_->refresh();
-    statsWidget_->refresh();
+    markAsModified();
+    refreshAllViews();
     
     // Show success message with fold sizes
     QString message = tr("K-Fold split completed:\n");
@@ -796,8 +803,8 @@ void MainWindow::onUndoSplit() {
     }
     
     // Refresh views
-    datasetView_->refresh();
-    statsWidget_->refresh();
+    markAsModified();
+    refreshAllViews();
     
     // Disable undo action if stack is empty
     if (undoStack_.isEmpty() && undoAction_) {
@@ -820,8 +827,8 @@ void MainWindow::onAddSubsetFromToolbar() {
         }
         
         currentDataset_.addSubset(DatasetSubset(subsetName));
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        markAsModified();
+        refreshAllViews();
         statusBar()->showMessage(tr("Added subset '%1'").arg(subsetName));
     }
 }
@@ -848,8 +855,8 @@ void MainWindow::onDeleteSubsetFromToolbar(const QString& subsetName) {
         // Remove the subset
         currentDataset_.removeSubset(subsetName);
         
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        markAsModified();
+        refreshAllViews();
         statusBar()->showMessage(tr("Deleted subset '%1'").arg(subsetName));
     }
 }
@@ -890,8 +897,7 @@ void MainWindow::onDeleteSamplesFromToolbar() {
         }
         
         // Refresh views
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        refreshAllViews();
         statusBar()->showMessage(tr("Deleted %1 sample(s)").arg(selectedIndices.size()));
     }
 }
@@ -907,8 +913,7 @@ void MainWindow::onNewProject() {
     currentProjectPath_.clear();
     hasUnsavedChanges_ = false;
     
-    datasetView_->refresh();
-    statsWidget_->refresh();
+    refreshAllViews();
     samplePreview_->clear();
     metadataEditor_->clear();
     
@@ -936,8 +941,7 @@ void MainWindow::onOpenProject() {
         currentProjectPath_ = fileName;
         hasUnsavedChanges_ = false;
         
-        datasetView_->refresh();
-        statsWidget_->refresh();
+        refreshAllViews();
         samplePreview_->clear();
         metadataEditor_->clear();
         
@@ -1031,6 +1035,17 @@ bool MainWindow::promptSaveChanges() {
     } else {
         return false;  // Cancel
     }
+}
+
+// Helper Methods
+
+void MainWindow::refreshAllViews() {
+    datasetView_->refresh();
+    statsWidget_->refresh();
+}
+
+void MainWindow::markAsModified() {
+    setUnsavedChanges(true);
 }
 
 }
